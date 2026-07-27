@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Serve userscript",
+      "type": "shell",
+      "command": "python3 -m http.server 3333",
+      "problemMatcher": []
+    }
+  ]
+}
