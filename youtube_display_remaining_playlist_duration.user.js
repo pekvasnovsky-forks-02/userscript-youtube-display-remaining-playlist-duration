@@ -6,45 +6,123 @@
 // @author       Dragosarus
 // @match        http://www.youtube.com/*
 // @match        https://www.youtube.com/*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @noframes
 // @require      http://code.jquery.com/jquery-latest.js
 // ==/UserScript==
 
+// @ts-check
+
+
 (function() {
     'use strict';
 
-    // Enable/disable the display of the time remaining and/or the percentage watched/remaining.
-    const showTime = true; // e.g. (25m 2s left)
-    const showPercentage = true; // e.g. [42% done] (will be shown to the right of the time if also enabled)
+    // @ts-ignore
+    let showTime = GM_getValue("showTime", true);
 
-    // Logs debug messages to the console.
-    const debug = false;
+    function registerShowTimeMenu() {
+        // @ts-ignore
+        GM_registerMenuCommand(
+            `Show Time: ${showTime ? "ON" : "OFF"}`,
+            () => {
+                showTime = !showTime;
+                // @ts-ignore
+                GM_setValue("showTime", showTime);
 
-    /* Time formats:
-     * 0: "x.xx hours" or "x.xx minutes" or "x seconds"
-     * 1: xhxmxs (e.g 25m2s or 25m 2s)
-     * 2: h:mm:ss (e.g 25:02 or 1:00:31 or 0:03)
-    */
-    const timeFormat = 1;
+                // Update the menu item in place
+                registerShowTimeMenu();
 
-    /* Percentage formats:
-     * 0: % watched (e.g. [42% done])
-     * 1: % remaining (e.g. [58% left])
-    */
-    const percentageFormat = 0;
+                debugLog("Forcing update!");
+                update(true);
+            },
+            { id: "showTime-toggle" }
+        );
+    }
+
+    registerShowTimeMenu();
+
+
+    // @ts-ignore
+    let showPercentage = GM_getValue("showPercentage", true);
+
+    function registerShowPercentageMenu() {
+        // @ts-ignore
+        GM_registerMenuCommand(
+            `Show Percentage: ${showPercentage ? "ON" : "OFF"}`,
+            () => {
+                showPercentage = !showPercentage;
+                // @ts-ignore
+                GM_setValue("showPercentage", showPercentage);
+
+                // Update the menu item in place
+                registerShowPercentageMenu();
+
+                debugLog("Forcing update!");
+                update(true);
+            },
+            { id: "showPercentage-toggle" }
+        );
+    }
+
+    registerShowPercentageMenu();
+
+
+    // @ts-ignore
+    let debug = GM_getValue("debug", false);
+
+    function registerDebugMenu() {
+        // @ts-ignore
+        GM_registerMenuCommand(
+            `Debug: ${debug ? "ON" : "OFF"}`,
+            () => {
+                debug = !debug;
+                // @ts-ignore
+                GM_setValue("debug", debug);
+
+                // Update the menu item in place
+                registerDebugMenu();
+            },
+            { id: "debug-toggle" }
+        );
+    }
+
+    registerDebugMenu();
+
+
+    // @ts-ignore
+    let percentageFormatSetToWatchedNotRemaining = GM_getValue("percentageFormatSetToWatchedNotRemaining", true);
+
+    function registerPercentageFormatMenu() {
+        // @ts-ignore
+        GM_registerMenuCommand(
+            `Percentage Format: ${percentageFormatSetToWatchedNotRemaining ? "Watched" : "Remaining"}`,
+            () => {
+                percentageFormatSetToWatchedNotRemaining = !percentageFormatSetToWatchedNotRemaining;
+                // @ts-ignore
+                GM_setValue("percentageFormatSetToWatchedNotRemaining", percentageFormatSetToWatchedNotRemaining);
+
+                // Update the menu item in place
+                registerPercentageFormatMenu();
+
+                debugLog("Forcing update!");
+                update(true);
+            },
+            { id: "percentageFormatSetToWatchedNotRemaining-toggle" }
+        );
+    }
+
+    registerPercentageFormatMenu();
+
+
 
     /* true: The duration of the current video is ignored when determining the time left
      * false: The duration of the current video is added when determining the time left
     */
     const treatCurrentVideoAsWatched = false;
 
-    const timeFormat0_decimalPlaces = 2;
-    const timeFormat0_hourThreshold = 3600; // e.g "3.50" hours instead of "210.00 minutes" or "12600 seconds"
-    const timeFormat0_minuteThreshold = 60; // e.g "2.50" minutes instead of "150 seconds"
-    const timeFormat1_spacing = true; // e.g 1h 23m 2s instead of 1h23m2s
-    const timeFormat1_forceFull = false; // e.g 0h3m2s instead of 3m2s, 3h0m50s instead of 3h50s, etc
-    const timeFormat2_forceFull = false; // e.g 0:03:02 instead of 3:02
+    const timeFormat1_forceFull = false; // e.g 0h 3m 2s instead of 3m 2s, 3h 0m 50s instead of 3h 50s, etc
 
     const before = " - "; // ::before
     const before_miniplayer = " • ";
@@ -100,14 +178,26 @@
     initObservers(playlistObserver);
     setInterval(check, updateCooldown); // init; then ensure the pytplir button is detected correctly
 
+    /**
+     * @param {MutationRecord[]} mutationList
+     * @param {MutationObserver} observer
+     */
     function observerCallback(mutationList, observer) {
        update();
     }
+
+    /**
+     * @param {MutationRecord[]} mutationList
+     * @param {MutationObserver} observer
+     */
     function pytplirCallback(mutationList, observer) {
        debugLog("Forcing update!");
        update(true); // force update regardless of cooldown
     }
 
+    /**
+     * @param {MutationObserver} observer
+     */
     function initObservers(observer) {
         try {
             observer.observe($(selectors.vidCount)[0], observerOptions);
@@ -150,6 +240,7 @@
         }
 
         if (pytplir_btn) {
+            // @ts-ignore
             pytplir_btn.addEventListener("click", pytplirCallback);
         }
     }
@@ -211,6 +302,10 @@
         }
     }
 
+    /**
+     * @param {any[]} current
+     * @param {boolean} direction
+     */
     function getNextEntry(current, direction){
         let previous = current;
         if (direction) {
@@ -235,6 +330,10 @@
         }
     }
 
+    /**
+     * @param {any} entry
+     * @param {boolean} direction
+     */
     function checkIncomplete(entry, direction) {
         let vidNums = getVidNum();
         if (vidNums === undefined) { return; }
@@ -315,6 +414,10 @@
         }
     }
 
+    /**
+     * @param {any} entry
+     * @param {boolean} direction
+     */
     function addTime(entry, direction) {
         let time_raw = getTime(entry);
         debugLog("addTime", entry, time_raw);
@@ -333,6 +436,9 @@
         }
     }
 
+    /**
+     * @param {any} item
+     */
     function getTime(item) {
         let available = $(item).find(selectors.unplayableText).prop("hidden");
         debugLog("getTime", item, available, $(item).find(selectors.unplayableText));
@@ -355,12 +461,16 @@
     }
 
     // https://stackoverflow.com/questions/9640266/convert-hhmmss-string-to-seconds-only-in-javascript
+    /**
+     * @param {string} str
+     */
     function hmsToSecondsOnly(str) {
         let p = str.split(':'),
             s = 0, m = 1;
 
         while (p.length > 0) {
-            s += m * parseInt(p.pop(), 10);
+            const item =  /** @type {String} */ (p.pop());
+            s += m * parseInt(item, 10);
             m *= 60;
         }
 
@@ -391,13 +501,20 @@
             let percentage_before = missingData ? percentage_incompleteIndicator : percentage_completeIndicator;
             let playlistTime = time_total_s + time_total_s_elapsed;
             let percentage;
-            switch (percentageFormat) { // determine numerator
-                case 0: // show % watched
-                    percentage = time_total_s_elapsed;
-                    break;
-                case 1: // show % remaining
-                    percentage = time_total_s;
-                    break;
+
+            /* Percentage formats:
+            * 0: % watched (e.g. [42% done])
+            * 1: % remaining (e.g. [58% left])
+            */
+            let percentageFormat = 0;
+            if (percentageFormatSetToWatchedNotRemaining) {
+                // show % watched
+                percentageFormat = 0;
+                percentage = time_total_s_elapsed;
+            } else {
+                // show % remaining
+                percentageFormat = 1;
+                percentage = time_total_s;
             }
             if (playlistTime != 0){
                 percentage = 100 * percentage / playlistTime;
@@ -442,26 +559,11 @@
         incompleteFlag = false;
     }
 
-    function formatTime(time_total_s) {
-        let formats = [formatTime0, formatTime1, formatTime2];
-        if (timeFormat > formats.length || timeFormat < 0) {
-            timeFormat = 0;
-        }
-        return formats[timeFormat](time_total_s);
-    }
-
-    function formatTime0(time_total_s) { // "x.xx hours" OR "x.xx minutes" OR "x seconds"
-        if (time_total_s >= timeFormat0_hourThreshold) {
-            return (time_total_s / 3600).toFixed(timeFormat0_decimalPlaces) + " hours";
-        } else if (time_total_s >= timeFormat0_minuteThreshold) {
-            return (time_total_s / 60).toFixed(timeFormat0_decimalPlaces) + " minutes";
-        } else {
-            return time_total_s + " seconds";
-        }
-    }
-
-    function formatTime1(time_total_s) { // xhxmxs (e.g 25m2s or 25m 2s)
-        let space = timeFormat1_spacing ? " " : "";
+    /**
+     * @param {number} time_total_s
+     */
+    function formatTime(time_total_s) { // xhxmxs (e.g 25m 2s)
+        let space = " ";
         let hh = Math.floor(time_total_s / 3600);
         let mm = Math.floor((time_total_s % 3600) / 60);
         let ss = time_total_s % 60;
@@ -479,29 +581,13 @@
         return text;
     }
 
-    function formatTime2(time_total_s) { // h:mm:ss (e.g 25:02 or 1:00:31 or 0:03)
-        let hh = Math.floor(time_total_s / 3600);
-        let mm = Math.floor((time_total_s % 3600) / 60);
-        let ss = time_total_s % 60;
-
-        let text = "";
-        if (hh > 0 || timeFormat2_forceFull) {
-            text += hh + ":";
-        }
-        if (hh > 0 && mm > 0) { // 1:01:22
-            if (mm < 10) {text += "0";}
-        }
-        text += mm + ":";
-        if (ss < 10) {text += "0"}
-        text += ss;
-        return text;
-    }
-
+        /**
+         * @param {any[]} args
+         */
     function debugLog(...args) {
         if (debug) {
-            args.unshift("drypt:");
-            console.log.apply(this, args);
+            args.unshift("yt-display-duration:");
+            console.log.apply(console, args);
         }
     }
 })();
-/*eslint-env jquery*/ // stop eslint from showing "'$' is not defined" warnings
