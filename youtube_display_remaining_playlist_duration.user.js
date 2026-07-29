@@ -10,7 +10,6 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @noframes
-// @require      http://code.jquery.com/jquery-latest.js
 // ==/UserScript==
 
 // @ts-check
@@ -200,12 +199,20 @@
      */
     function initObservers(observer) {
         try {
-            observer.observe($(selectors.vidCount)[0], observerOptions);
-            let miniplayerTarget = $(selectors.vidCount_miniplayer);
-            if (!miniplayerTarget.length) {
-                miniplayerTarget = $(selectors.vidNum_miniplayer).next().children()[1];
-            } else {
-                miniplayerTarget = miniplayerTarget[0];
+            const vidCount = document.querySelector(selectors.vidCount);
+            if (!vidCount) {
+                throw new Error("Element vidCount not found");
+            }
+            observer.observe(vidCount, observerOptions);
+            /**
+             * @type {Element | null | undefined}
+             */
+            let miniplayerTarget = document.querySelector(selectors.vidCount_miniplayer);
+            if (!miniplayerTarget) {
+                miniplayerTarget = document.querySelector(selectors.vidNum_miniplayer)?.nextElementSibling?.children[1];
+            }
+            if (!miniplayerTarget) {
+                throw new Error("Element miniplayerTarget not found");
             }
             observer.observe(miniplayerTarget, observerOptions); // miniplayer
             debugLog("Observers initiated!");
@@ -219,8 +226,12 @@
         // Youtube seems to change this quite often, and due to A/B testing all of them need to be checked
         let miniplayer_attributes = ["miniplayer-is-active", "miniplayer-active_", "miniplayer-active"];
         miniplayerActive = false;
+        const selectedYtdApp = document.querySelector(selectors.ytd_app);
+        if (!selectedYtdApp) {
+            throw new Error("Element selectedYtdApp not found");
+        }
         for (let attr of miniplayer_attributes) {
-            miniplayerActive ||= $(selectors.ytd_app)[0].hasAttribute(attr);
+            miniplayerActive ||= selectedYtdApp.hasAttribute(attr);
         }
         return miniplayerActive;
     }
@@ -228,7 +239,7 @@
     function check() {
         miniplayerActive = isMiniplayerActive();
 
-        if (!$(selectors.drypt_label).length || (miniplayerActive && !$(selectors.drypt_label_miniplayer).length)) {
+        if (!document.querySelector(selectors.drypt_label) || (miniplayerActive && !document.querySelector(selectors.drypt_label_miniplayer))) {
             update();
         }
 
@@ -292,41 +303,45 @@
         let elem;
         try {
             if (miniplayerActive) {
-                return $(selectors.currentVideo_miniplayer)[0];
+                return document.querySelector(selectors.currentVideo_miniplayer);
             } else {
-                return $(selectors.currentVideo)[0];
+                return document.querySelector(selectors.currentVideo);
             }
         } catch (e) {
             debugLog("getCurrentEntry", e);
             errorFlag = true;
         }
+
+        return null;
     }
 
     /**
-     * @param {any[]} current
+     * @param {Element | null} current
      * @param {boolean} direction
      */
-    function getNextEntry(current, direction){
-        let previous = current;
-        if (direction) {
-            current = $(current).prev();
-        } else {
-            current = $(current).next();
-        }
-        if (current.length) {
-            let available = current.find(selectors.unplayableText).prop("hidden")
+    function getNextEntry(current, direction) {
+        const previous = current;
+
+        current = /** @type {Element | null} */ (direction
+            ? current?.previousElementSibling
+            : current?.nextElementSibling);
+
+        if (current) {
+            const unplayableText = current.querySelector(selectors.unplayableText);
+            const available = /** @type {HTMLElement | null} */ (unplayableText)?.hidden;
+            
             debugLog("getNextEntry", current, available);
-            if (current[0].tagName == "YTD-MESSAGE-RENDERER") { // "n unavailable videos" at the end of a playlist
+            if (current.tagName == "YTD-MESSAGE-RENDERER") { // "n unavailable videos" at the end of a playlist
                 checkIncomplete(previous, direction);
-                return undefined;
-            } else if (available || available == undefined) {
-                return current[0];
+                return null;
+            } else if (available || available == null) {
+                return current;
             } else {
                 return getNextEntry(current, direction);
             }
         } else {
             checkIncomplete(previous, direction);
-            return undefined;
+            return null;
         }
     }
 
@@ -336,24 +351,30 @@
      */
     function checkIncomplete(entry, direction) {
         let vidNums = getVidNum();
-        if (vidNums === undefined) { return; }
+        if (vidNums === undefined || vidNums === null) { return; }
         let num;
         try {
-            num = $(entry).find("#index");
+            num = entry.querySelector("#index");
+
             // For some reason the above now seems to fail for every entry
-            if (!num.length) {
-                num = $(entry).find("span").filter("#index");
+            if (!num) {
+                num = Array.from(entry.querySelectorAll("span"))
+                    .find(span => span.id === "index");
             }
-            num = num[0].innerText;
+
+            num = num.innerText;
         } catch (e) { // most likely, the bottom of the playlist contains a message saying "n unavailable videos"
             let lastAvailableNum;
             try {
-                 // Get playlist index of the video before the message
-                 lastAvailableNum = $(entry).prev().find("#index");
-                 if (!lastAvailableNum.length) {
-                     lastAvailableNum = $(entry).find("span").filter("#index");
-                 }
-                 lastAvailableNum = lastAvailableNum[0].innerText;
+                // Get playlist index of the video before the message
+                lastAvailableNum = entry.previousElementSibling?.querySelector("#index");
+
+                if (!lastAvailableNum) {
+                    lastAvailableNum = Array.from(entry.querySelectorAll("span"))
+                        .find(span => span.id === "index");
+                }
+
+                lastAvailableNum = lastAvailableNum.innerText;
             } catch (e2) { // perhaps the playlist has not fully loaded yet?
                 debugLog(entry, direction, e, e2);
                 return;
@@ -379,25 +400,27 @@
     function getVidNum() { // returns string array [current, total], e.g "32 / 152" => ["32","152"]
         let vidNum;
         if (miniplayerActive) {
-            vidNum = $(selectors.vidNum_miniplayer).children();
-            if (vidNum.length >= 2) { // Youtube A/B testing
-                vidNum = vidNum[2].innerText;
+            const vidNumElement = document.querySelector(selectors.vidNum_miniplayer);
+            const children = vidNumElement?.children;                
+            if (children && children.length >= 2) { // Youtube A/B testing
+                vidNum = /** @type {HTMLElement} */ (children[2]).innerText;
             } else {
                 // "• x / y"
-                vidNum = $(selectors.vidNum_miniplayer).parent().children()[1].innerText.substring(2);
+                vidNum = /** @type {HTMLElement | null} */ (vidNumElement?.parentElement?.children[1])?.innerText.substring(2);
             }
         } else {
             try {
                 // the desired element is hidden; to distinguish from
                 // other hidden elements, check parent's visibility
-                vidNum = $(selectors.vidNum).filter(function(){
-                    return $(this).parent().is(":visible");
-                })[0].innerText;
+                const element = /** @type {HTMLElement | undefined} */ (Array.from(document.querySelectorAll(selectors.vidNum))
+                    .find(el => el.parentElement?.offsetParent !== null));
+
+                vidNum = element?.innerText;
             } catch (e) { // e.g. the user switched from one playlist to another
-                return undefined;
+                return null;
             }
         }
-        return vidNum.split(" / ");
+        return vidNum?.split(" / ") ?? null;
     }
 
     function getDirection(){ // Compatible with https://greasyfork.org/en/scripts/404986-play-youtube-playlist-in-reverse-order
@@ -410,12 +433,12 @@
         if (!pytplir_btn) {
             return DOWN;
         } else {
-            return $(pytplir_btn).attr("activated") == "true" ? UP : DOWN;
+            return pytplir_btn.getAttribute("activated") == "true" ? UP : DOWN;
         }
     }
 
     /**
-     * @param {any} entry
+     * @param {Element} entry
      * @param {boolean} direction
      */
     function addTime(entry, direction) {
@@ -427,9 +450,9 @@
             } else { // in order to calculate % done/remaining
                 time_total_s_elapsed += hmsToSecondsOnly(time_raw);
             }
-            entry = getNextEntry(entry, direction);
-            if (entry) {
-                addTime(entry, direction);
+            const nextEntry = getNextEntry(entry, direction);
+            if (nextEntry) {
+                addTime(nextEntry, direction);
             }
         } else {
             errorFlag = true;
@@ -437,23 +460,26 @@
     }
 
     /**
-     * @param {any} item
+     * @param {Element} item
      */
     function getTime(item) {
-        let available = $(item).find(selectors.unplayableText).prop("hidden");
-        debugLog("getTime", item, available, $(item).find(selectors.unplayableText));
+        const unplayableTextElement = /** @type {HTMLElement | null} */ (item.querySelector(selectors.unplayableText));
+        const available = unplayableTextElement?.hidden;
+
+        debugLog("getTime", item, available, unplayableTextElement);
         if (available || available == undefined) {
-            let time = $(item).find(selectors.timestamp);
-            if (!time.length) {
+            let time = /** @type {HTMLElement | null | undefined} */ (item.querySelector(selectors.timestamp));
+            if (!time) {
                 // Either the timestamp has not loaded yet, or the selector stopped working for whatever reason.
                 // In the latter case, searching only for the class and then filtering for the <span> tag should still work.
-                time = $(item).find(selectors.timestamp2).filter("span");
+                time = /** @type {HTMLElement | null | undefined} */ (Array.from(item.querySelectorAll(selectors.timestamp2))
+                    .find(el => el.tagName === "SPAN"));
             }
 
-            if (!time.length) { // Timestamp has not loaded yet
+            if (!time) { // Timestamp has not loaded yet
                 return "-1";
             } else {
-                return $.trim(time[0].innerText);
+                return time.innerText.trim();
             }
         } else { // unwatchable video => no timestamp
             return "0";
@@ -530,31 +556,47 @@
         let textColor = "rgb(237,240,243)";
         if (!miniplayerActive) {
             debugLog("normal display");
-            if (!$(selectors.drypt_label).length) {
+            if (!document.querySelector(selectors.drypt_label)) {
                 let label = document.createElement("a");
                 label.setAttribute("font-family","Roboto, Noto, sans-serif");
                 label.setAttribute("font-size","13px");
                 label.setAttribute("fill",textColor);
                 label.setAttribute("id","drypt_label");
-                $(selectors.playlistHeaderText).filter(":visible")[0].appendChild(label);
+                
+                const el = Array.from(document.querySelectorAll(selectors.playlistHeaderText))
+                    .find(el => /** @type {HTMLElement} */ (el).offsetParent !== null);
+
+                if (el) {
+                    el.appendChild(label);
+                }
             }
-            $(selectors.drypt_label)[0].innerText = before + timeString + percentageString;
+            const drypt_label_element = /** @type {HTMLElement | null} */ (document.querySelector(selectors.drypt_label));
+            if (!drypt_label_element) {
+                throw new Error("Element drypt_label_element not found");
+            }
+            drypt_label_element.innerText = before + timeString + percentageString;
 
         } else { // miniplayer
             debugLog("miniplayer display");
-            if (!$(selectors.drypt_label_miniplayer).length) {
+            if (!document.querySelector(selectors.drypt_label_miniplayer)) {
                 let label_miniplayer = document.createElement("a");
                 label_miniplayer.setAttribute("font-family","Roboto, Noto, sans-serif");
                 label_miniplayer.setAttribute("font-size","13px");
                 label_miniplayer.setAttribute("fill",textColor);
                 label_miniplayer.setAttribute("id","drypt_label_miniplayer");
-                if ($(selectors.vidNum_miniplayer).length < 2) { // Youtube A/B testing
-                    $(selectors.vidNum_miniplayer).parent().children()[1].appendChild(label_miniplayer);
+                const vidNum_miniplayer = document.querySelectorAll(selectors.vidNum_miniplayer);
+
+                if (vidNum_miniplayer.length < 2) { // Youtube A/B testing
+                    vidNum_miniplayer[0]?.parentElement?.children[1]?.appendChild(label_miniplayer);
                 } else {
-                    $(selectors.vidNum_miniplayer)[0].appendChild(label_miniplayer);
+                    vidNum_miniplayer[0]?.appendChild(label_miniplayer);
                 }
             }
-            $(selectors.drypt_label_miniplayer)[0].innerText = before_miniplayer + timeString + percentageString;
+            const drypt_label_miniplayer_element = /** @type {HTMLElement | null} */ (document.querySelector(selectors.drypt_label_miniplayer));
+            if (!drypt_label_miniplayer_element) {
+                throw new Error("Element drypt_label_miniplayer_element not found");
+            }
+            drypt_label_miniplayer_element.innerText = before_miniplayer + timeString + percentageString;
         }
         incompleteFlag = false;
     }
