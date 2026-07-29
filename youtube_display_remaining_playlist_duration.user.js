@@ -1,9 +1,10 @@
 // ==UserScript==
-// @name         Display remaining Youtube playlist time
-// @namespace    https://github.com/Dragosarus/Userscripts/
-// @version      4.3
-// @description  Displays the sum of the lengths of the remaining videos in a playlist
-// @author       Dragosarus
+// @name         Display remaining Youtube playlist duration
+// @namespace    https://github.com/pekvasnovsky-forks-02/userscript-youtube-display-remaining-playlist-duration
+// @version      1.0.0
+// @description  Displays the sum of the lengths of the watched/remaining videos in a playlist
+// @author       pekvasnovsky
+// @license      Unlicense
 // @match        http://www.youtube.com/*
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
