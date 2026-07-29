@@ -290,7 +290,7 @@
             }
         }
 
-        if (!errorFlag){
+        if (!errorFlag) {
             debugLog("Displaying!", time_total_s, time_total_s_elapsed);
             display();
         } else {
